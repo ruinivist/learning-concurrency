@@ -27,8 +27,8 @@ class BlockingQueue {
     std::condition_variable producer_cv, consumer_cv;
 
    public:
-    const int N, P, C;
-    BlockingQueue(int N, int P, int C) : N(N), P(P), C(C) {}
+    const int N;
+    BlockingQueue(int N) : N(N) {}
 
     void push(T elem) {
         {
@@ -58,7 +58,7 @@ const int N = 5, P = 2, C = 3;
 const int EAT_COUNT = 3;
 int total_produces = C * EAT_COUNT;  // thrice
 std::mutex chef_mutex;
-BlockingQueue<std::string> queue(N, P, C);
+BlockingQueue<std::string> queue(N);
 
 int random_int(int low, int high) {
     thread_local std::mt19937 gen(std::random_device{}());
