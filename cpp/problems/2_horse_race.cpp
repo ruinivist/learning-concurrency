@@ -1,6 +1,6 @@
 /*
 3 Horses in 3 threads
-each updated it's position
+each updates it's position
 when they all have make a move, update screen
 
 use: barrier
@@ -59,7 +59,7 @@ void horse_jumps(int horse_index) {
         barrier.arrive_and_wait();
     }
 
-    // arrive and not wait, needed as if one reacher finish
+    // arrive and not wait, needed as if one reaches finish
     // other will stay waiting
     barrier.arrive_and_drop();
 }
