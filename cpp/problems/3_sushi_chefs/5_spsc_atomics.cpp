@@ -65,10 +65,12 @@ int main() {
     std::thread producer([&] {
         for (int i = 0; i < 20;) {
             if (queue.try_push(i)) {
-                std::println("prod put {}", i++);
+                std::print("prod put {}", ++i);
             } else {
                 // tell sched to relinquish control to another thread
                 // "yielding" is key in cooperative algos
+                // yield is a HINT mostly, these two threads are pretty much
+                // spin-waiting
                 std::this_thread::yield();
             }
         }
