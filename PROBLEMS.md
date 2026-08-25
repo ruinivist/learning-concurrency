@@ -10,7 +10,7 @@ Simulate a horse race with three threads. Each horse advances by a random 1–4 
 
 ## 3. Sushi Chefs: producer consumer
 
-Simulate `P` chefs and `C` customers sharing a conveyor belt with `N` slots. Chefs prepare sushi and customers eat it. A chef waits when the belt is full, and a customer waits when it is empty. Stop the simulation after every customer has eaten exactly three dishes.
+Simulate `P` chefs and `C` customers sharing a conveyor belt with `N` slots. Chefs prepare sushi and customers eat it. A chef waits when the belt is full, and a customer waits when it is empty. Infinite simulation.
 
 ## 4. Museum decorators: reader-writer lock
 
