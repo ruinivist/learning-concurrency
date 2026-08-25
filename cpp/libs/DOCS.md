@@ -16,7 +16,33 @@ other stuff
 
 # semaphore ( a composite )
 
-a wrapper around a mutex, int ctr, and condition variable
+A wrapper around a mutex, a counter and a condition variable.
+
+The core api makes sense when viewed as a bounded blocking queue though the naming is
+not great ( though probably makes sense from an agnostic perspective ).
+
+Another ( perhaps better) model is to think of slots as "permits", you can add a permit for free
+but need to wait when you try to take one and there are none.
+
+```cpp
+#include<semaphore>
+
+// N = max limit for sema, n = initially filled slots
+std::counting_semaphore<N> sema(n);
+```
+
+- `acquire`: relate to taking, this is for consumers. Wait till some item exists ( aka count > 0 ) and notify
+- `release(optional count)`: relate to releasing into the queue. increment counter and notify ( non blocking )
+
+Note that while it would've been convenient if the sema used `N` as the queue bound size and waited if we are at
+limit but what it does instead is UB if you release when sema is already at limit.
+
+This is why making a bounded blocking queue with semas need two semas.
+
+Imagine as one semaphore accounting for free slots and another accouting for the slots that have items.
+You move "slots" to either free or taken.
+
+![sema-viz](gifs/sema.gif)
 
 # cv
 
