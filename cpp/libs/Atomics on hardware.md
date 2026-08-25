@@ -227,6 +227,14 @@ test and test and set thing, else it won't be atomic as a whole + it's again a H
 guarantee. This is why a `test_and_set` CAN invalidate even if the value is already set; it may
 not if it is on the SAME cache line as core and the whole coherence thing does not kick in.
 
+## How many atomics?
+
+Atomics are for sync the other data ( "stuff" being synced ) does not need to be atomic.
+
+The idea is often that you use one atomic to map to onse set of state changes, this allows for a
+higher concurrency. Using just one atomic for ALL of state is bad idea as then you're just asking
+a thread to take exclusive lock of the whole state before changing anything.
+
 ## Skipped ( for now )
 
 ABA is interesting but I'll cover those in time.
