@@ -122,3 +122,65 @@ created task wrapper but execution is manual (unlike async)
 
 10 threads waiting on a single future value ( like config load )
 copyable future
+
+# spin lock
+
+I had this incorrect idea that a spinlock is just a volatile variable ( volatile so that
+the compiler does not optimise away the read ) and then just a while loop. That is just
+an incorrect implementation.
+
+```
+Thread A                 Thread B
+
+lock()
+  acquire lock
+
+                         lock()
+                           locked...
+                           locked...
+                           locked...
+                           locked...
+
+unlock()
+                         acquire lock
+```
+
+The only difference over a mutex lock is just that thread B here keeps on checking and
+consuming CPU cycles instead of going to sleep.
+
+## `std::atomic_flag` as the simplest atomic primitive
+
+The whole concept atomics is that the internals are IMPLEMENTED by the cpu ( so ARCH dependent
+as well ) and GUARANTEED to be run atomically AS A WHOLE, this is why it has some weird operations
+like `test_and_set`.
+
+```cpp
+std::atomic_flag flag = ATOMIC_FLAG_INIT;
+
+// read
+bool x = flag.test();
+
+// write 0
+flag.clear();
+
+// write 1
+bool old_flag = flag.test_and_set();
+```
+
+so a spinlock then becomes a a while loop like
+
+```cpp
+while (flag.test_and_set()) {
+    // critical section
+}
+```
+
+this is now guaranteed by cpu level atomic synchronisation
+
+### But what hapens at the hardware level?
+
+For making it easier, I'll assume the two threads execute with two different cores.
+And entirely skip core-virtualisation. For say the same core cache, all this cache coherence is
+less relevant but you still need synchronisation that atomics give you.
+
+Rest is in separate [atomics on hardware](<Atomics on hardware.md>) note.
