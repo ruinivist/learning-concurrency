@@ -1,40 +1,54 @@
 #include <atomic>
+#include <chrono>
 #include <mutex>
+#include <print>
+#include <thread>
+#include <vector>
 
-class SpinLock {
+class Spinlock {
+   private:
+    std::atomic_flag flag_ = ATOMIC_FLAG_INIT;
+
    public:
     void lock() {
+        // test and test and set ( rev )
         while (true) {
-            // lock aquire attemp, assuming non-contention bias
+            // need to read -> lock -> acuire
+            // !flag_ ... => old value was unset and we've set
             if (!flag_.test_and_set(std::memory_order_acquire)) {
-                return;
+                break;
             }
 
-            // Second "test":
-            // Lock is currently held, so spin using READS only.
+            // cheap reads, no ordering needed
             while (flag_.test(std::memory_order_relaxed)) {
                 // spin
             }
-
-            // flag looked free, so loop back and try
-            // test_and_set() again.
         }
+        // returns on crit section
     }
 
-    void unlock() { flag_.clear(std::memory_order_release); }
-
-   private:
-    std::atomic_flag flag_ = ATOMIC_FLAG_INIT;
+    // cpp's template duck typing, this'll throw on compile if no
+    // unclock and lock are defined
+    void unlock() {
+        // I've written so release lock
+        flag_.clear(std::memory_order_release);
+    }
 };
 
-SpinLock lock;
-int counter = 0;
+Spinlock lock;
+int ctr = 0;
 
-void worker() {
-    /*
-    cpp has compile time duck typing on templates so the lock_guard is just a
-    RAII guard which needs lock and unclock to exit on the template param
-    */
-    std::lock_guard<SpinLock> guard(lock);
-    ++counter;
+void worker(int i) {
+    while (true) {
+        std::lock_guard<Spinlock> guard(lock);
+        std::println("Worker {} inc counter to {}", i, ctr++);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
+int main() {
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 4; i++) threads.emplace_back(worker, i);
+
+    threads[0].join();  // never stops so this is fine
 }
