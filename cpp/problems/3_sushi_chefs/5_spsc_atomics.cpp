@@ -52,9 +52,9 @@ class SPSC {
         // modify data
         T ret = std::move(array_[head]);
 
-        int next_head = (head + 1) % N;
+        head = (head + 1) % N;
         // then publish
-        head_.store(next_head, std::memory_order_release);
+        head_.store(head, std::memory_order_release);
         return ret;
     }
 };
@@ -65,7 +65,7 @@ int main() {
     std::thread producer([&] {
         for (int i = 0; i < 20;) {
             if (queue.try_push(i)) {
-                std::print("prod put {}", ++i);
+                std::println("prod put {}", ++i);
             } else {
                 // tell sched to relinquish control to another thread
                 // "yielding" is key in cooperative algos

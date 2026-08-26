@@ -50,7 +50,19 @@ General SPSCs that are studied and demonstrated claim lock free by not using mut
 free ( aka non blocing ) by using `try_push` and `try_pop` operations that return without any
 blocking.
 
+### A short note on ring buffers
+
+The one that we'll use here will be the "one empty" slot ones. This allows us to distinguish full
+vs empty ( as both would be head == tail if we did not have a reserted slot )
+
+With this
+
+- empty => head == tail
+- full => tail + 1 == head
+
 ### SPSC ring buffer using atomics and "try" semantics
+
+This is the usual "lock-free" spsc.
 
 The key thing that SPSC gives you the guarantee that push will only be called by producer
 and pop only by consumer. This allows you to now have any sync on "tail" for push and on "head"
@@ -58,3 +70,8 @@ for a pop. Now of course both vars are read so you need to sync the other one.
 
 > correction: no sync is needed on read, but since the other one can be reading what YOU changed
 > there you do need a publish even for your owned var
+
+### SPSC ring buffer using atomic waits
+
+I don't quite understand well what's the difference between say using two mutexes to create the
+same exclusive state that these atomics make -- but well, in time I guess I will understand.
