@@ -248,3 +248,73 @@ NUMA coherence
 LL/SC forward-progress guarantees
 ABA
 sequential consistency proofs
+
+# CAS
+
+CAS - compare exchage swap
+
+The whole idea of CAS is that the oddly specific pattern of
+compare, exchange and swap can be done in ONE atomic operation
+on the cpu and are directly supported by cpu itself as an opcode.
+
+There are two types a weak and a strong, difference is that a weak
+one can spuriously fail even when there is no lock while a strong
+one does not. Why do we care? Most of the time you will be using
+CAS on a loop so it won't matter, strong probably has some specific
+uses, they cannot wrap it in a loop for you as this is all low level
+api and should what it says.
+
+CAS( address, expected, new )
+
+```
+if *address == expected:
+    *address = new
+    return success
+else:
+    return failure
+```
+
+The atomicity allows this loop to exist
+
+- I check value of x to be A
+- take some time to compute f(A)
+- now atomically I want to do, if x is still A which means my compute
+  is valid and not stale, set x to be f(A)
+
+# ABA
+
+ABA is a classic problem with CAS, by the very nature of the algo.
+
+If a change was A -> B -> A then CAS will just ignore the history
+of changes and have no idea that a modification was made in between.
+
+This may or may not be fine depending on what we are trying to do.
+
+For example, for a lock free stack, ABA can lead it to an invalid
+state.
+
+top
+A -> B -> C
+
+Thread A:
+read top to be A
+compute f(A) as: set top to next of A which is B
+PAUSED
+
+thread B:
+pop A
+pop B
+push A
+PAUSED
+
+thread A:
+try CAS( \*A, A, B ), which suceeds as top is still A by a
+value comparison and set top as B which is an invalid state
+for the stack, could be freed etc.
+
+Note that the key problem is WHAT we are comparing in CAS
+if we used some globally unique ids for example instead of values
+then this is not a problem; so very much depends on what we are
+trying to do and with what data.
+
+Note that tagged pointers / versioning is a natural solution.
