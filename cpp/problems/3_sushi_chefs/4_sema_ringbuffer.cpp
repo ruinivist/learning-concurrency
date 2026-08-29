@@ -42,8 +42,8 @@ class BlockingRingQ {
         taken_.acquire();
         {
             std::unique_lock<std::mutex> lock(mtx_);
-            elem = std::move(array_[head_--]);
-            if (head_ == -1) head_ = N - 1;
+            elem = std::move(array_[head_++]);
+            if (head_ == N) head_ = 0;
         }
         free_.release();
         return elem;
