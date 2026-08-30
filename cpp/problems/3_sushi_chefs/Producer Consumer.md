@@ -162,6 +162,12 @@ The impl does not handle
 - consumers busy wait as no sleep ( a yield just hints that something else can run but another
   consumer would anyways keep on spinning )
 
+#### Generation counter subvariant
+
+Only the wiring at usage changes to notify and avoid a busy wait.
+You use atomics and wait as signals, note that this is still a compromise but is just easier to do by an application level blocking
+on a try semantics queue.
+
 # TODOs
 
 - work stealing
