@@ -149,6 +149,27 @@ value or anything else.
 
 `seq_cst` = default and slowest, serialises instructions to one global timeline.
 
+In general, if you want to see the chage made by a by some release in another thread, you NEED
+to have acquire when reading.
+
+### Comparison to my MPMC
+
+Even though I wrote above, I still had trouble understandin what to use when in my MPMC.
+I think this is clearer with an example though.
+
+> Do I just need atomicity by CAS or am I trying to use this atomic as a sync fence?
+
+For enq_pos, there is not state tied to that variable, all I need is just the CAS guarantee
+that only one producer can proceed; so there I can use a relaxed order.
+
+But for the seq numbers, there is data tied to that atomic to be written by prod and read by
+cons; I need the re-ordering guarantee there so that once my prod atomic is published, the
+data read MUST be visible by reader. Think of writer -> reader ( in this order ) as an acquire
+must be tied to a previous release.
+
+Again remember that that atomics are atomic regarless of acquire release, but the operation
+re-ordering is ALL that we do here, it's not needed for any "staleness" on the atomic itself.
+
 ## Cache line ping pong
 
 It's not exactly false sharing but the reason is same. Here there is just one variable ( as opposed
@@ -251,7 +272,10 @@ sequential consistency proofs
 
 # CAS
 
-CAS - compare exchage swap
+> compare exchange swap is just not a term at all, don't know
+> where I picked it from
+
+CAS - compare and swap
 
 The whole idea of CAS is that the oddly specific pattern of
 compare, exchange and swap can be done in ONE atomic operation
@@ -260,9 +284,10 @@ on the cpu and are directly supported by cpu itself as an opcode.
 There are two types a weak and a strong, difference is that a weak
 one can spuriously fail even when there is no lock while a strong
 one does not. Why do we care? Most of the time you will be using
-CAS on a loop so it won't matter, strong probably has some specific
-uses, they cannot wrap it in a loop for you as this is all low level
-api and should what it says.
+CAS on a loop so it won't matter, as on a failure you NEED to read
+again so you NEED retry, in which case whether the retry actually reads
+something new or not does not matter much; and perf is better as strong
+won't have to internally do a retry.
 
 CAS( address, expected, new )
 

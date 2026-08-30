@@ -75,3 +75,93 @@ for a pop. Now of course both vars are read so you need to sync the other one.
 
 I don't quite understand well what's the difference between say using two mutexes to create the
 same exclusive state that these atomics make -- but well, in time I guess I will understand.
+
+## MPMPC
+
+This is the "current" state of things though the ideas are nothing new
+at best there have been practical variations but that was it mostly.
+
+The very original ( not the first but rather the first popular ) one
+was this linkled list based impl in 1996 ( https://www.cs.rochester.edu/~scott/papers/1996_PODC_queues.pdf ) so that was the OG.
+
+What's practically used now and is the current popular version is
+the Vyukov MPMC which uses ring buffers ( instead of linked list so
+you don't have to bother with memory alloc dealloc ) and uses seq
+numbers; though it is a BOUNDED one as opposed to UNBOUNDED of the
+original.
+
+There are mainly these two things that change mostly, bound vs
+unbounded and blocking/lock-free/wait-free etc.
+
+### Some terms
+
+- Blocking: one stalled thread can stop anyone from progressing
+- Lock-free: a failure for one MUST mean that SOME thread has made
+  progress
+- Lockless ( practical lock free ): while above is the formal defn of
+  lock free, what people usually mean is that it uses atomics ops.
+- Wait-free: every thread is guaranteed to progress in a finite number
+  of steps, independent of other threads.
+
+### Vyukov MPMC
+
+The key idea is that of seq numbers, logical vs physical positions.
+
+Assume, capacity is 4.
+
+Enqueue and dequeu ops always work on ever increasing logical positions
+like 0, 1, 2, 3, 4, 5, 6 ....
+
+which map back to a physical position ( "slot" ) as logicaly position % cap
+
+so 0, 4, 8, 12... all map to the 0th index on the queue, and work as generation
+counters as to what generation of "reuse" it is for this slot.
+
+For a producer that wants to enq => ask for next logical slot aka enq position
+assuming we just started and it maps to slot 0 % 4 = 0
+
+```
+producer:
+    read enqueue_pos = p
+    inspect slot for p
+    > NOTE: that you don't compare after remainder as you want generation info too
+    claim p by changing enqueue_pos to p+1
+    write data
+    set slot.sequence = p+1
+
+consumer:
+    read dequeue_pos = p
+    inspect slot for p
+    claim p by changing dequeue_pos to p+1
+    read data
+    set slot.sequence = p+capacity
+
+Comparisons on seq and p ( for producer )
+seq == p => exactly the generation we need; try to claim it
+seq < p  => slot hasn't reached WRITABLE state; queue is full here
+seq > p  => some other thread updated, retry
+
+Comparisons on seq and p ( for consumer )
+seq == p+1 => we are good to read
+seq < p+1 => slot hasn't reached READABLE state; q is emtpy
+seq > p+1 => some other thread updated, retry
+
+to summarise you can think of seq being the truth on the slot
+if it's behind that's a full empty state ( not reached required state )
+if it's ahead that's a stale enq/dq pos and we retry
+```
+
+Naturally the enq and dq position counters must be atomic as first is shared
+among P producers and second among C consumers. What about seq per slot?
+At first it looks like it does not but that too can shared across ONE consumer and
+ONE producer both looking for that same slot, so that needs to be atomic as well.
+
+The impl does not handle
+
+- counter loop overs
+- consumers busy wait as no sleep ( a yield just hints that something else can run but another
+  consumer would anyways keep on spinning )
+
+# TODOs
+
+- work stealing
