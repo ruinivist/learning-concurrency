@@ -72,6 +72,11 @@ Something like this is almost always correct.
 cv.notify
 ```
 
+How to name cvs?
+
+- Do not use by role as in reader_cv or producer_cv
+- Use by condition being waited for in the cv
+
 # rwlock
 
 uses `std::shared_mutex` and `std::shared_lock` for reads and `std::unique_lock` for writes
