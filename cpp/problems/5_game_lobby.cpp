@@ -1,53 +1,33 @@
-/*
-N threads ( players ) start at the same time
-each take some random time, print player i joined
-when player i is done.
-
-print game start when all is done
-reset again
-
-idea: rendezvous
-
-use: mutex, condition variable, generation counters
-*/
-
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <print>
 #include <random>
 #include <thread>
 #include <vector>
 
 class Barrier {
-    int total_;
-    int current_ = 0;
-    int generation_counter_ = 0;
+   private:
+    int total_, current_, gen_ctr_ = 0;
 
-    std::mutex mtx;
-    std::condition_variable cv;
+    std::mutex mtx_;
+    std::condition_variable cv_;
 
    public:
-    Barrier(int total) : total_(total) {}
+    Barrier(int total, int current = 0) : total_(total), current_(current) {};
 
-    void arrive_and_wait(int player_id) {
-        {
-            std::unique_lock<std::mutex> lck(mtx);
-            int this_generaion = generation_counter_;
-            current_++;
-            std::printf("Player %d arrived\n", player_id + 1);
-
-            if (current_ == total_) {
-                std::printf("Game found\n");
-                current_ = 0;
-                generation_counter_++;
-                cv.notify_all();
-            } else {
-                cv.wait(lck, [&]() {
-                    return this_generaion != generation_counter_;
-                });
-            }
+    void arrive_and_wait() {
+        std::unique_lock<std::mutex> lock(mtx_);
+        int orig_gen = gen_ctr_;
+        current_++;
+        bool move_on = current_ == total_;
+        if (move_on) {
+            gen_ctr_++;
+            current_ = 0;
+            cv_.notify_all();
+        } else {
+            cv_.wait(lock, [&] { return orig_gen < gen_ctr_; });
         }
-
-        cv.notify_all();
     }
 };
 
@@ -57,20 +37,37 @@ int random_int(int low, int high) {
     return dist(gen);
 }
 
-const int N = 10;
-Barrier barrier(N);
-
-void player(int player_id) {
-    while (true) {
+void player(int id, Barrier& barrier, int rounds) {
+    for (int round = 1; round <= rounds; ++round) {
         std::this_thread::sleep_for(
-            std::chrono::milliseconds(random_int(0, 2000)));
-        barrier.arrive_and_wait(player_id);
+            std::chrono::milliseconds(random_int(20, 100)));
+        std::println("Player {} arrived (round {})", id, round);
+
+        barrier.arrive_and_wait();
+
+        std::println("--> Player {} starting round {} work", id, round);
     }
 }
 
 int main() {
-    std::vector<std::thread> players;
-    for (int i = 0; i < N; i++) players.emplace_back(player, i);
+    const int NUM_PLAYERS = 4;
+    const int ROUNDS = 3;
 
-    for (auto& t : players) t.join();
+    Barrier barrier(NUM_PLAYERS);
+    std::vector<std::thread> players;
+    players.reserve(NUM_PLAYERS);
+
+    std::println("Starting game lobby with {} players across {} rounds:\n",
+                 NUM_PLAYERS, ROUNDS);
+
+    for (int i = 1; i <= NUM_PLAYERS; ++i) {
+        players.emplace_back(player, i, std::ref(barrier), ROUNDS);
+    }
+
+    for (auto& t : players) {
+        t.join();
+    }
+
+    std::println("\nAll rounds completed successfully.");
+    return 0;
 }

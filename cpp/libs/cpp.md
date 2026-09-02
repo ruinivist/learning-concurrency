@@ -77,6 +77,14 @@ How to name cvs?
 - Do not use by role as in reader_cv or producer_cv
 - Use by condition being waited for in the cv
 
+Side effects in cv wait predicate?
+
+- generally avoid it, makes it harder to reason exactly what
+  the wait condition is. Also it MUST be idempotent and a read only
+  no side effect predicate is easier to get right.
+
+````
+
 # rwlock
 
 uses `std::shared_mutex` and `std::shared_lock` for reads and `std::unique_lock` for writes
@@ -96,7 +104,7 @@ a one time barrier
 
 ```cpp
 std::barrier b(3); // 3 arrivals
-barrive_and_wait(); // mark this arrival and wait for others
+arrive_and_wait(); // mark this arrival and wait for others
 
 // LESSER USED
 arrive() // only mark arrival
@@ -104,7 +112,7 @@ wait() // only wait, used when ^ is used, kind of go in pair
 
 arrive_and_drop() // mark arrival and permanently decrease the init arrival
 // count that was set
-```
+````
 
 # future and promise
 
