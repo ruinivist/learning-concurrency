@@ -83,6 +83,9 @@ Side effects in cv wait predicate?
   the wait condition is. Also it MUST be idempotent and a read only
   no side effect predicate is easier to get right.
 
+think of notify as a check condition again case, it's fine to have some
+superflous ones if the code is cleaner.
+
 ````
 
 # rwlock

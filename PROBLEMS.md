@@ -22,3 +22,7 @@ Use "blocking" apis.
 ## 5. Game lobby: reusable barrier
 
 Create `N` player threads that repeatedly join a game lobby. Each player arrives after a random delay. Print `Game found` when all players have arrived, then reset the lobby and repeat forever.
+
+## 6. Dining Philosophers: deadlock avoidance
+
+Simulate `N` philosophers sitting around a circular table with `N` chopsticks. Each philosopher alternates between thinking and eating. A philosopher needs both adjacent chopsticks (left and right) to eat. Prevent deadlock and philosopher starvation.
