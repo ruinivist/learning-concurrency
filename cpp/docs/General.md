@@ -18,11 +18,7 @@ other stuff
 
 A wrapper around a mutex, a counter and a condition variable.
 
-The core api makes sense when viewed as a bounded blocking queue though the naming is
-not great ( though probably makes sense from an agnostic perspective ).
-
-Another ( perhaps better) model is to think of slots as "permits", you can add a permit for free
-but need to wait when you try to take one and there are none.
+The core api makes sense when viewed as a ticket counter.
 
 ```cpp
 #include<semaphore>
@@ -116,28 +112,6 @@ wait() // only wait, used when ^ is used, kind of go in pair
 arrive_and_drop() // mark arrival and permanently decrease the init arrival
 // count that was set
 ````
-
-# future and promise
-
-move only.
-for returning values from threads
-
-# call once
-
-for singleton initialization
-
-# async (future helper)
-
-create fut and threads easily. fire and forget
-
-# packaged task (future helper)
-
-created task wrapper but execution is manual (unlike async)
-
-# shared future
-
-10 threads waiting on a single future value ( like config load )
-copyable future
 
 # spin lock
 

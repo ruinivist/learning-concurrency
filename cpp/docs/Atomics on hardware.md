@@ -343,3 +343,37 @@ then this is not a problem; so very much depends on what we are
 trying to do and with what data.
 
 Note that tagged pointers / versioning is a natural solution.
+
+# Waits
+
+Say you want to BLOCK till the data CHANGES ( or may not change but better
+than a busy wait ).
+
+essential api
+
+```cpp
+notify_one() / notify_all()
+you have the usual load store
+.wait(old value) => this will CONTINUE when value now is diff from old value
+```
+
+Interesting quirks
+
+- all eligible waiters wake up on a notify all, check their old value and then decide
+  if to continue
+- for a waiter to be eligible, there MUST be one modificaton ( store op ) after
+  the wait started and before a notify
+
+To summarise
+x is 0
+thread A waits(0)
+x store 1
+thread B waits(1)
+thread C
+
+Scenario 1
+calls notify => note that B is not eligible here
+
+Scenario 2
+a superflous noop store of 1
+notify => both A and B are eligible

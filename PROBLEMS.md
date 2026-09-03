@@ -26,3 +26,7 @@ Create `N` player threads that repeatedly join a game lobby. Each player arrives
 ## 6. Dining Philosophers: deadlock avoidance
 
 Simulate `N` philosophers sitting around a circular table with `N` chopsticks. Each philosopher alternates between thinking and eating. A philosopher needs both adjacent chopsticks (left and right) to eat. Prevent deadlock and philosopher starvation.
+
+## 7. Thread pool
+
+Thread pool, many variations
