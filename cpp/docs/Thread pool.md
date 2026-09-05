@@ -21,3 +21,16 @@ So
 $$
 N \times S/(S+W) = C
 $$
+
+# Tasks
+
+## 1. Fixed-size fire-and-forget pool
+
+No args, RAII based stopping. Remember to execute tasks without mutex, mutex
+is just for metadata like a rw lock. Stopping semantics is graceful shutdown =>
+stop taking new tasks, but finish all queued ones.
+
+# cpp bits
+
+what happens if the dtor is private?
+compile time throw
