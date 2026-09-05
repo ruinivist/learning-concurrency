@@ -131,6 +131,7 @@ int main() {
     // move it to a thread, the THREAD will call it FOR YOU, so at this step you need the args
     // note that task is the CALLABLE so you can do
     // task(10, 20) as well
+    // also note that tasks are MOVE ONLY so this move is not cosmetic
     std::thread t(std::move(task), 10, 20);
 
     // block on the val
@@ -296,6 +297,11 @@ ret val is similarly int&&
 ```
 
 This way the value category remains preserved.
+
+Is there any scenario where you use the forwarding reference but not
+forward? Well, only if you are using your judgement to say that forwarding
+does not matter for the cases covered here but then that's not good code I
+would say, you either use both or none at all.
 
 ### Ok but where does it all matter?
 
