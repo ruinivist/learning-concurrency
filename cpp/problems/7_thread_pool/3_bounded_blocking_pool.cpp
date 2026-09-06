@@ -1,5 +1,5 @@
-#include <array>
 #include <cassert>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -10,18 +10,16 @@
 #include <thread>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
-template <std::size_t N>
 class ThreadPool {
-    static_assert(N > 0);
-
    private:
     using Task = std::move_only_function<void()>;
-    std::array<std::thread, N> threads_;
+    std::vector<std::thread> threads_;
     std::deque<Task> tasks_;
     std::mutex mtx_;
     bool stopping_ = false;
-    std::condition_variable stop_or_task_cv_;
+    std::condition_variable stop_or_dq_task_cv_, stop_or_enq_task_cv_;
 
     void worker() {
         while (true) {
@@ -32,7 +30,7 @@ class ThreadPool {
                 // stopping_ && tasks_.empty() || !tasks_.empty();
                 // a && !b || b is same as a || b
                 // case on b to make it obvious
-                stop_or_task_cv_.wait(
+                stop_or_dq_task_cv_.wait(
                     lock, [&] { return stopping_ || !tasks_.empty(); });
                 if (stopping_ && tasks_.empty()) return;
                 // otherwise you pick a task
@@ -41,14 +39,20 @@ class ThreadPool {
                 tasks_.pop_front();
             }
 
+            stop_or_enq_task_cv_.notify_one();
             task();
         }
     }
 
     // internal wrapper, handles stuff post convertion to no arg void tasks
     void submit_(Task task) {
+        // now we must block and continue either when stopping or we have space
         {
-            std::lock_guard<std::mutex> lock(mtx_);
+            std::unique_lock<std::mutex> lock(mtx_);
+            // who notified this? a stop or a pop
+            stop_or_enq_task_cv_.wait(
+                lock, [&] { return stopping_ || tasks_.size() < capacity; });
+            // for where some thread is blocked on a submit and we begin to stop
             if (stopping_) {
                 throw std::runtime_error("can't queue when stopping");
             }
@@ -56,16 +60,22 @@ class ThreadPool {
         }
         // if all are working they'll pick it up some is done
         // otherwise I must wake up
-        stop_or_task_cv_.notify_one();
+        stop_or_dq_task_cv_.notify_one();
     }
 
    public:
-    ThreadPool() {
+    const std::size_t capacity;
+
+    explicit ThreadPool(std::size_t thread_count, std::size_t capacity)
+        : capacity(capacity) {
+        assert(thread_count > 0);
+        assert(capacity > 0);
         // we spawn n threads
-        for (std::size_t i = 0; i < N; i++) {
+        threads_.reserve(thread_count);
+        for (std::size_t i = 0; i < thread_count; i++) {
             // pointer to member syntax, note how first is the
             // ptr to member and second is the obect
-            threads_[i] = std::thread(&ThreadPool::worker, this);
+            threads_.emplace_back(&ThreadPool::worker, this);
         }
     };
 
@@ -77,7 +87,8 @@ class ThreadPool {
             stopping_ = true;
             // do I notify while holding the lock or AFTER? AFTER
         }
-        stop_or_task_cv_.notify_all();
+        stop_or_dq_task_cv_.notify_all();
+        stop_or_enq_task_cv_.notify_all();
         // I added a second cv here on a cv wait for tasks empty
         // workers will naturally exit and join would succeed, you don't
         // need a cv
@@ -105,38 +116,32 @@ class ThreadPool {
 
 int main() {
     {
-        ThreadPool<3> pool;
-        auto result = pool.submit([](int a) { return a * a; }, 10);
-        assert(result.get() == 100);
+        ThreadPool pool(1, 1);
+        std::promise<void> worker_started, release_worker;
+        auto release = release_worker.get_future().share();
 
-        int completed = 0;
-        auto void_result = pool.submit([&completed] { ++completed; });
-        void_result.get();
-        assert(completed == 1);
+        // queue up a blocking task
+        auto running = pool.submit([&worker_started, release] {
+            worker_started.set_value();
+            release.wait();
+        });
+        // as worker started is done this must proceed immediately
+        worker_started.get_future().wait();
 
-        auto failed = pool.submit(
-            []() -> int { throw std::runtime_error("task failed"); });
-        try {
-            failed.get();
-            assert(false);
-        } catch (const std::runtime_error&) {
-        }
+        auto queued = pool.submit([] {});
+        // this'll block as release is not completed yet
+        auto blocked_submit = std::async(
+            std::launch::async, [&pool] { return pool.submit([] {}); });
 
-        auto pointer = std::make_unique<int>(42);
-        auto moved =
-            pool.submit([value = std::move(pointer)] { return *value; });
-        assert(moved.get() == 42);
-        assert(!pointer);
+        assert(blocked_submit.wait_for(std::chrono::milliseconds(10)) ==
+               std::future_status::timeout);
 
-        int value = 10;
-        auto modified =
-            pool.submit([](int& number) { ++number; }, std::ref(value));
-        modified.get();
-        assert(value == 11);
-
-        const int constant = 7;
-        auto read = pool.submit([](const int& number) { return number; },
-                                std::cref(constant));
-        assert(read.get() == 7);
+        // free the release
+        release_worker.set_value();
+        // wait on the older running one to complete and then the blocked one
+        running.get();
+        queued.get();
+        // async returns one fut and then my pool returns anotehr
+        blocked_submit.get().get();
     }
 }

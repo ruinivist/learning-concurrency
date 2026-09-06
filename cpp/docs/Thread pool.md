@@ -154,6 +154,32 @@ of the different bits.
 - `using Result = std::invoke_result_t<decltype(job)&>;` is how it should be.
   that & at the end does decltype IF the callable is invoked as an lvalue. Needed for very exotic cases so I'll just drop it for now.
 
+## Backpressure ( task 3 )
+
+In general such thread pools are expected to run some significant enough workload that
+actually running the task non-locked is what takes the most time, contention on the lock
+is expected to be minimal and not the main blocker so improvements like using ring-buffers
+or atomics offer little gain unless a proven hot path or large number of very quick tasks ( in which case, do we really need a thread pool as the whole might just be more overhead than the task itself, but again, always test ).
+
+Here, we just use deque and cvs. Here's a line of reasoning,
+
+- the pool max queue size is fixed taken at input.
+- I need submitters to be blocked if we're full so the submit itself needs a cv to
+  continue when the queue is not full OR a stop is sent. In case someone is blocked while
+  a stop is sent, throw for that submitter.
+- any notification changes? just the above, right now my submit just uses a lock guard, no cv based wait.
+- new cvs? remember that the current cv is "stop*or*(pick)\_task" and depends on
+  workers ( thread count being free ), what we need is another one "stop_or_put_task" which depends on the capacity being free even if all workers are running.
+
+### Templating vs ctor args
+
+I noticed that I've been biased to just templatng members like sizes and capacity for no
+real reason. For my thread pool impl so far, I have the thread pool size templated and
+then use a `std::array`. Remember how arrays NEED the sizes compile time and that is being
+restrictive, for possibly no real gain ( compiler might have more info for optim but vecs
+are pretty optimised ).
+Avoid the bias of templating and just use ctor args.
+
 # Tasks
 
 ## 1. Fixed-size fire-and-forget pool
@@ -167,6 +193,11 @@ stop taking new tasks, but finish all queued ones.
 Generic `submit(f, args...)`, perfect forward to eventual invocation and return a future
 where caller gets rv or error. Use packaged task, but rem that it is move only so as hint
 task queue needs `std::move_only_function`; think of void, error, references, move only args
+
+## 3. Bounded queue / backpressure pool
+
+Give task queue a capacity. submit blocks while full, workers needs to wake a blocked
+submitter when it pops; also on shutdown wake them so they throw and don't sleep forever.
 
 # cpp bits
 
