@@ -282,6 +282,56 @@ details on impl for it is satisfied. Apparently, the more idiomatic real impls
 use what's a Chase–Lev-style deque but let's just stop for now; I don't think
 exploring this branch more serves me much.
 
+## Task cancellations
+
+`std::jthread` is wrapper on `std::thread`, it's basically an autojoinable
+thread aka RAII version of thread so dtor does a reqeust stop AND then joins.
+
+A jthread by default will create internally and own a token, if the worker takes
+a `std::stop_token` as the first arg and uses that to define stopping points in
+code via handling of `st.stop_requested()` then it can respect a `request_stop()`
+made on the thread itself. This is via templating, and if your worker does not
+have that as first arg or does not implement any handling, it's same as any
+other thread, a stop request will do nothing.
+
+```cpp
+std::jthread worker([&](std::stop_token st) {
+  while(true) {
+    if (st.stop_requested()) {
+        std::cout << "Cancelled\n"
+        return;
+    }
+
+    // some unit of work that can't be cancelled
+    // if we reach here ( unless there's more handling )
+  }
+});
+
+worker.request_stop();
+// this'll set the internal stop state true to make that stop_requested be true
+```
+
+This above does not give you the token directly. In fact, that is created intenally
+is a `stop_source` which gives you a token ( you can get multiple copies of it ),
+a stop request on the source will stop it for ALL the tokens ( tokens.stop_requested
+is true ).
+
+Note that since these are just arguments, you can let jthread use it's own internal
+token AND also pass in an external one ( just like any other arg ).
+This way you can have a global and local stop.
+
+What is the internal logic on deciding when what is passed?
+I had trouble imagining it but it turned out to be simpler
+
+```cpp
+// try if this a is valid callable
+worker(internal_stop_token, args...)
+// if that's valid => use it
+// else call as
+worker(args...)
+// if this is invalid as well, that's a CE
+```
+
 # Tasks
 
 ## 1. Fixed-size fire-and-forget pool
@@ -307,6 +357,14 @@ Give every worker a local deque: it runs latest local task for cache locality, i
 steal oldest tasks from others. Worker spawned tasks go local; external submits stay global.
 The point of work strealing is for handling tasks that themselves spawn tasks.
 Drop boundedness to make impl easier again.
+
+## 5. Cooperative cancellation pool
+
+This is intended to be simpler, as much as possible and to just focus on cancellation apis.
+
+Make a simple two worker thread pool, no args / forwarding, have each of them increment a
+separate counter and sleep, cancel just worker one first and then do a global cancel some
+time later.
 
 # cpp bits
 
