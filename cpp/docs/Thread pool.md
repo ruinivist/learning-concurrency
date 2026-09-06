@@ -180,6 +180,108 @@ restrictive, for possibly no real gain ( compiler might have more info for optim
 are pretty optimised ).
 Avoid the bias of templating and just use ctor args.
 
+## Work stealing ( task 4 )
+
+The generic task pool so far is almost good and what you would reach for usually. This is for specific parallel heavy workloads that spawn parallel tasks again
+that can get asymmetric fast. Because you see the whole point of "work stealing" is to FIX a problem that isn't even a problem so far. We introduce local queues
+to do quick worker level task scheduling and then fix the asymmetry by work stealing.
+
+Here's a line of reasoning.
+
+- each worker will need some local state so we mak a private struct for that
+- an idle worker would prefer own local queue ( newest ) then steal ( oldest ) first ( so that the external submitted unit of task is done first ) and only
+  then pick a task from global queue. Reason being if it's my local, the newest is likely cache hot, if I'm stealing I should help by stealing oldest.
+- stop semantics are all the same, complete existing, stop taking new ( throw ); unbounded to make it easier.
+- a clean shape then is just to have all local state including the thread itself
+  in a worker struct.
+- the worker loop should use a separate `try_steal` to make the stealing logic cleaner.
+  a `try_steal` is meant to be conservative in the stealing ( hence the try ), intention is to
+  use try lock semantics and only inspect where you can actually get a lock instead of waiting
+  to get a lock and checking. In this case, finding nothing to steal will not mean there was
+  nothing to steal but that's fine, hence if some were skipped due to not being able to lock we
+  should keep trying, this can become spin lock like busy wait.
+  - Another option is to drop that try semantics and for each worker, block on lock to check.
+  - The tradeoffs I feel can only be reasonably estimated for the workload and through benchmarks.
+
+### submit needs (pool, worker) identification
+
+There are 3 cases we need to be able o distinguish
+
+- a submit called from external ( main )
+- a submit called by a worker from this pool
+- a submit called by a worker from ANOTHER pool
+
+the idiomatic way to go about that is to store thread local vars.
+`inline static thread_local WorkerState* current_worker_ = nullptr;`
+when a worker runs it'll set that ptr to it's own worker state.
+This is enough to distinguish the first two cases.
+
+The last two need one more state tied to each worker, it's owning pool.
+The ctor of the thread pool will set that state, then workers can check
+if that current worker pointer is set ( it's inside some worker ) and the
+owner is this ( the task is originating from THIS pool's worker not some
+other ), then we do a local queue else global.
+
+`inline static thread_local`, the `thread_local` is obvious, the first is
+cpp reusing same keywords again to make things confusing.
+A class level thread local NEEDS a static, a static inside a class then
+NEEDS an inline ( else you would have to define it outside ).
+I need to come up with some coherent model of this ( provided there is one ).
+
+For impl,
+
+- set owner ptr in ctor
+- set worker state ptr in worker start
+- submit needs both current worker being set AND owner being this to use
+  the local queue
+
+Can it happen that a submit vs a worker start setting that state pointer have a race?
+No, because then the task would just go to the global queue and when the worker does
+start eventually it'll pick that up.
+
+### task count handling
+
+this is another bit that gets tricky in this one. stoping for examle is global but
+needs to be handled local too. If you are waiting on a global task ( 3rd step in worker
+loop ), a local task won't wake you up.
+
+So the waiting cv needs to wait both a global task count, a local task count and wake
+up on either. A simple way is to just keep sum of both as global list of tasks across
+the whole pool and then you wait on that, this way a local block does not prevent you
+from seeing a global addition and the other way around as well.
+An atomic int is IDEAL here as a counter for.
+
+impl details
+
+- atomic counter as not all usages are under a global lock
+- stopping behavior NEEDS you to read stopping under a global lock
+  and THEN take a local lock as well, this is wrong
+  - global stopping check needs the whole of submit to be under stopping not
+    changing, else this can happen
+- the final wait changes to `stopping or all tasks > 0`
+
+```cpp
+submitter: checks stopping_ == false
+submitted paused
+destructor: sets stopping_ = true, wakes workers
+workers:   finish and exit
+submitter resumed
+submitter: puts task into local queue
+```
+
+### Reflections
+
+This work stealing impl is a toy one but it leans towards more toy than real.
+Problem being we added local queues to have have fast local submit but ended
+up locking the whole of submit under a global mutex. The local deque op is
+not under a global mutex but unsure how much that really buys us.
+There is also this buy retry loop in my `try_steal`.
+
+In any case, I think the objective of "learning" what it is and some of the
+details on impl for it is satisfied. Apparently, the more idiomatic real impls
+use what's a Chase–Lev-style deque but let's just stop for now; I don't think
+exploring this branch more serves me much.
+
 # Tasks
 
 ## 1. Fixed-size fire-and-forget pool
@@ -198,6 +300,13 @@ task queue needs `std::move_only_function`; think of void, error, references, mo
 
 Give task queue a capacity. submit blocks while full, workers needs to wake a blocked
 submitter when it pops; also on shutdown wake them so they throw and don't sleep forever.
+
+## 4. Work stealing pool
+
+Give every worker a local deque: it runs latest local task for cache locality, idle workers
+steal oldest tasks from others. Worker spawned tasks go local; external submits stay global.
+The point of work strealing is for handling tasks that themselves spawn tasks.
+Drop boundedness to make impl easier again.
 
 # cpp bits
 

@@ -76,7 +76,7 @@ for a pop. Now of course both vars are read so you need to sync the other one.
 I don't quite understand well what's the difference between say using two mutexes to create the
 same exclusive state that these atomics make -- but well, in time I guess I will understand.
 
-## MPMPC
+## MPMC
 
 This is the "current" state of things though the ideas are nothing new
 at best there have been practical variations but that was it mostly.
@@ -103,6 +103,15 @@ unbounded and blocking/lock-free/wait-free etc.
 - Wait-free: every thread is guaranteed to progress in a finite number
   of steps, independent of other threads.
 
+To better understand why "mutex" is locking, think of this case
+
+- A locks mutex is paused by OS to run other threads, but all the other threads NEED
+  mutex and just yield back control; progress is ONLY made when A is done with it's work
+  and releases mutex. This is perfectly normal.
+- In atomics, there is NO such case possible as no partial locking like this, hence they
+  are generaly lock free ( not always, for example TWO atomic ops need to succeed as is the
+  case with Vyukov MPMC ).
+
 ### Vyukov MPMC
 
 The key idea is that of seq numbers, logical vs physical positions.
@@ -125,9 +134,9 @@ producer:
     read enqueue_pos = p
     inspect slot for p
     > NOTE: that you don't compare after remainder as you want generation info too
-    claim p by changing enqueue_pos to p+1
+    claim p by changing enqueue_pos to p+1 ( THIS(1) )
     write data
-    set slot.sequence = p+1
+    set slot.sequence = p+1 ( THIS(2) )
 
 consumer:
     read dequeue_pos = p
@@ -161,6 +170,15 @@ The impl does not handle
 - counter loop overs
 - consumers busy wait as no sleep ( a yield just hints that something else can run but another
   consumer would anyways keep on spinning )
+
+**why this is not "lock-free" ?**
+
+Because I need two atomics ops to be done before another thread can make progress, if I get
+paused in between, there is no progress guarantee.
+For a producer, if you look at the algo => THIS(1) and (2) above, if it gets paused after 1 but
+before 2, no other producer or consumer can use that slot at all, this producer MUST complete 2
+as well before a consumer can use it.
+Hence, it's not lock free.
 
 #### Generation counter subvariant
 
