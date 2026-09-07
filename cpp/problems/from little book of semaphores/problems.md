@@ -28,7 +28,8 @@ Restrictions
   exact smoker to wake up based on items.
 - agent code cannot be modified
   - with gen counters I could have the smokers wait on two cvs and reset if
-    generation changed to avoid partial consumption ( solution 2 )
+    generation changed to avoid partial consumption ( solution 2 ), this way
+    we don't need to wake ALL smokers
 
 ## Solution
 
@@ -47,10 +48,19 @@ it
 ### Queue like setup ( solution 3 )
 
 Instead of letting each smoker decide, we make queues for each ingredient and notify
-on the status of that change => this is the "pushers" idea from the book
+on the status of that change => this is the "pushers" idea from the book. "pusher"
+as a name makes more sense since there's the queue will actively push out the event
+instead of passively waiting.
 
-So the agent will notify on the status change of the two ingredients it added.
+This fits the contraints however I feel this just shifted the smoker selection to the
+pushers; from an os perspective, we still can't expect pushers to select exactly the
+next process.
 
 ## Learnings
 
 - prints are also part of data race
+- cvs CAN wake up spuriously so stateless blocks are just plain wrong
+- I did the cv based solution on 3 first but that ende up needing individual state to be
+  coupled with each cv; you always need a state due to ^ but if the state ends up mapping
+  one to one, you would def want to use a semaphore instead as it's just a cv + counter
+  encapsulated in one
