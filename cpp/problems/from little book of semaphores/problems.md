@@ -63,4 +63,9 @@ next process.
 - I did the cv based solution on 3 first but that ende up needing individual state to be
   coupled with each cv; you always need a state due to ^ but if the state ends up mapping
   one to one, you would def want to use a semaphore instead as it's just a cv + counter
-  encapsulated in one
+  encapsulated in one. For example in sol 3, I have 6 cvs and 6 int counters for each,
+  one to one.
+- it's a bit non trivial to make an array or vec of semaphores as not copyable or movable,
+  what you can do is wrap them in an optional
+- I should use semas more, they naturally avoid unique locks which often ends up locking
+  global mutexes unless you are careful

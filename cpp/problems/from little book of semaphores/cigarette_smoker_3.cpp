@@ -18,7 +18,6 @@ std::array<int, 3> push_pending{};
 bool agent_can_place = true;
 
 int rand_int() {
-    // only one thread is calling it, no need to make thread local
     std::mt19937 mt{std::random_device{}()};
     std::uniform_int_distribution<int> gen(0, 2);
     return gen(mt);

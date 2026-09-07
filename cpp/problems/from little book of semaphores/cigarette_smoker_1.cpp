@@ -23,7 +23,6 @@ std::array<int, 3> table{};  // {} will init all to 0
 std::condition_variable smokers_picks_cv, agent_places_cv;
 
 int rand_int() {
-    // only one thread is calling it, no need to make thread local
     std::mt19937 mt{std::random_device{}()};
     std::uniform_int_distribution<int> gen(0, 2);
     return gen(mt);
