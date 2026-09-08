@@ -69,3 +69,34 @@ next process.
   what you can do is wrap them in an optional
 - I should use semas more, they naturally avoid unique locks which often ends up locking
   global mutexes unless you are careful
+- one less line when modifying based on indexes and values
+
+```cpp
+for (auto [idx, val] : table | std::views::enumerate) {
+    val -= (idx != have);
+}
+```
+
+## Cigarette smokers ( harder variant )
+
+What this on changes is that there is no requirement for the agent to wait for
+a smoker to complete and hence there can be multiple instances of ingredients
+available for the smokers to use.
+
+I'll modify just the semapore based pusher solution for this harder variant.
+
+Here's the chain of thought
+
+- do I need an agent sema now? there's no need of sync, agent can KEEP on adding so no
+- when anyone can proceed, do I need to be smart about it as to who I wake up? say matches
+  are in abundance and I keep on waking the smoker that already has matches; I don't think it's
+  a problem as we are trading one smoker for another, as long as the matches guy DOES NOT end
+  use using agent supplied matches instead of their own; no guaranteed on fair order among
+  smokers but that's not a requirement
+- In my current solution for the simple case, I did not like the idea of pushers consuming
+  table counts on behalf of the smoker and then waking them up but here we have NO other choice,
+  see my big comment in the smoker function.
+
+I do not really like the book's solution here, even more so as we did not want the agent ( os )
+to know about each application's resources but now we just moved that off to pushers, and not just
+signal but the acquiring part as well, I don't see how this scales well to an os.
