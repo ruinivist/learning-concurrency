@@ -100,3 +100,41 @@ Here's the chain of thought
 I do not really like the book's solution here, even more so as we did not want the agent ( os )
 to know about each application's resources but now we just moved that off to pushers, and not just
 signal but the acquiring part as well, I don't see how this scales well to an os.
+
+## Cigarette smokers ( harder variant )
+
+A really nice trick for this 3 ingredient version is to not store the full table AT all but
+just the one ingredient we have, as soon as we get to two ingredients we clear them but if
+there's just one and even if it's repeated by agent to be match:1 to match:2, all we need is
+that one ingredient for state.
+
+By reducing state this way, I can get state that is atomically lock free on my machine; so we
+can get to "some" level of lock-freeness. Due to the waits this is not "lock-free" in
+the formal sense still.
+
+### An always mistake on atomic memory orders
+
+This is my bias, I see an atomic release acquire as the atomic values themselves being re-ordered.
+What they re-order is the surrounding state, the atomic itself is visible as if serialised, even
+if relaxed. These fences are ONLY for other variables. In my impl, saying that all I use are atomics so I don't need ANY sync at all is wrong, what I do not do is observer one
+atomic and rely on seeing an update to another different atomic which is why I can use
+relaxed all the way. Think here the impl is similar to a "turnstile" due to pushers.
+
+### Back to the problem
+
+here is what the flow looks like
+
+helpers
+post -> add one to permit
+take -> wait till permit it's not 0 then subtract one from permit
+
+agent loop
+post two random permits in a loop ( pusher pending array of 3 atomic counters )
+
+pusher loop
+take that permit
+do a cas on the scoreboard to find the smoker
+then post to smoker atomic counter
+
+smoker loop
+take from smoker
