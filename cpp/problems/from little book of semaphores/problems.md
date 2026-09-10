@@ -138,3 +138,96 @@ then post to smoker atomic counter
 
 smoker loop
 take from smoker
+
+# Dining savages problem (5.1)
+
+A communal pot holds `M` servings. Any number of diner threads repeatedly
+take one serving from the pot and eat it. A single cook thread take refills
+the pot with `M` servings.
+
+Needed
+
+- a diner cannot take a serving while the pot is empty ( getServing cannot be
+  invoked when empty )
+- the cook can refill the pot only when it is empty ( putServing cannot be
+  invoked when non-empty )
+
+Conceptually, the threads run the following code:
+
+```text
+diner:
+while true:
+    getServingFromPot()
+    eat()
+
+cook:
+while true:
+    putServingsInPot(M)
+```
+
+## Solution 1 ( cvs )
+
+the book's solution is "clever" I would say but really the book is just TOO
+dependent on semas, to the point that it uses a binary semaphore as a global
+mutex as well, I think semas and the whole full empty state trick we for semas
+in prod consumer is just forcing semas here. Atomics and cvs are kind of natural
+solution for this.
+
+## Solution 2 ( atomics )
+
+I think this one is like "hello world" equivalent of atomics.
+... ^ well I wrote but had trouble figuring out the correct diner loop
+this is the "template" that I should keep in mind for a "guarded cv like
+atomic state transition".
+
+This is safer but longer for a non-exclusive ownership on a transitions
+
+```cpp
+while(1) {
+  int cur = load
+
+  if state transition blocked
+    wait on cur
+    continue !!! as when the loop re-runs we will LOAD again
+
+  // state transition possible for THIS cur
+  if(cas(cur, new_cur)) // note vuln to ABA issues
+    break; // we were able to update
+
+  // cas faild = someone else changed it retry
+}
+```
+
+my chef loop is simpler due to the EXCLUSIVE ownerhip on the "continue"
+condition => I don't need cas as everyone else is BLOCKED, all I need is
+the atomic guarantee that operation succeeds, so in my case I remove the cas
+and change continue to a reload Of var inside.
+
+so basically
+
+```
+read
+if bad state
+  wait(what we read)
+  // someone notified
+  re-read to recheck if bad state
+```
+
+## Solution 3 ( barriers )
+
+this really is a direct application of a reusable barrier.
+we can't arrive and wait for a diner as then it can only eat once before waiting
+so we just arrive, but the chef is conditioned on M+1 waits ( self arrive )
+how the diners are blocked on empty is via a counting sema.
+
+## Solution 4 ( sema only )
+
+the book's solution, I'm also using a binay sema as a global mutex here.
+the one thing to learn is that I was initially leaning on a counting sema,
+as well the same sema needs to be waited on acquire by the M diners.
+
+Note that the entire thing is SERIALISED under the global mutex so if the last
+diner just does not release it, there is no race, the chef just works WITHIN
+that last diner's mutex. If you do release it then other diners CAN take it
+and MUST arrive at a wait condition on their own hence the counting sema as
+multiple must wait.
