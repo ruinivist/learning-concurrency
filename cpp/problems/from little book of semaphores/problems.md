@@ -308,8 +308,7 @@ A barbershop with:
 - 3 barbers and 3 barber chairs
 - 1 sofa seating 4 customers
 - standing room for additional customers
-- fire code cap of 20 people total (balk if full)
-  - 3 in chair, 4 on sofa, 13 standing / 12 standing + 1 at register
+- max customers ( in any state ) are 20, new ones will leave
 - 1 cash register
 
 Needed
@@ -347,3 +346,23 @@ Though the problem with the cv solution is that if you do it the trivial way
 then say for the step of MOVING to sofa, all standing ones wake check if they
 are next and then move; if you want to do it cleanly where only the correct
 one wakes then it's a sema all over again.
+
+### The two way rendezvous
+
+I realised that I did not understand the 2 way sync and why it was needed, as I
+intuitively ended up making the one way signal again.
+
+In the case of a one way signalling, the usher here can signal two threads to
+proceed, now both will wake up and try to acuire the sofa. This breaks the FIFO
+that we need.
+
+In the case of a two way, the usher keeps the sofa locked till the customer
+acks that they have taken it.
+
+### back to the sol
+
+some learnings
+
+- reusing semas is good across the two way but note that it MUST be alternating;
+  if it's not then that's just plain wrong
+- you might want to not re-use to allow any to any interaction
