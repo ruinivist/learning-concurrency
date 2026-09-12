@@ -300,3 +300,50 @@ queue under a global mutex. Then when barber wakes up he justs pops front
 and signals that one.
 
 impl detail: semas can't move so you use pointers, a shared ptr is ideal here
+
+# Hilzer's barbershop problem (5.4)
+
+A barbershop with:
+
+- 3 barbers and 3 barber chairs
+- 1 sofa seating 4 customers
+- standing room for additional customers
+- fire code cap of 20 people total (balk if full)
+  - 3 in chair, 4 on sofa, 13 standing / 12 standing + 1 at register
+- 1 cash register
+
+Needed
+
+- customers progress in order: `enterShop()` -> `sitOnSofa()` -> `getHairCut()` -> `pay()`
+- FIFO ordering:
+  - standing -> sofa: longest standing customer sits when sofa spot opens (sofa capacity = 4)
+  - sofa -> chair: longest seated customer on sofa gets served when a barber is free (3 chairs max)
+- up to 3 concurrent haircuts
+- payment:
+  - only 1 customer at the register at a time (mutex)
+  - customer `pay()` and barber `acceptPayment()` rendezvous
+  - customer cannot leave until barber accepts payment
+- barbers divide time: cutting hair, accepting payment, sleeping when idle
+
+```text
+customer:
+  enterShop()      # balk if 20
+  sitOnSofa()      # FIFO wait for sofa (max 4)
+  getHairCut()     # FIFO wait for chair (max 3)
+  pay()            # rendezvous at single cash register
+
+barber:
+  while true:
+    # cut hair, accept payment, or sleep
+```
+
+## Solution ( sema )
+
+The problem is primarily is impl hell with all the constraints, especially
+with semas as they are just counters and can't do waits on complex conditions;
+it'll fall into a "turnstile" if you want to use semas.
+
+Though the problem with the cv solution is that if you do it the trivial way
+then say for the step of MOVING to sofa, all standing ones wake check if they
+are next and then move; if you want to do it cleanly where only the correct
+one wakes then it's a sema all over again.
