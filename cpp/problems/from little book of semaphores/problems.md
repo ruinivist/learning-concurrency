@@ -231,3 +231,72 @@ diner just does not release it, there is no race, the chef just works WITHIN
 that last diner's mutex. If you do release it then other diners CAN take it
 and MUST arrive at a wait condition on their own hence the counting sema as
 multiple must wait.
+
+# Barbershop problem (5.2)
+
+A barbershop has room for `n` customers total (e.g. `n - 1` in waiting room + 1
+in chair) and a single barber thread.
+
+Needed
+
+- if shop is full (`n` customers already in shop), arriving customer invokes
+  `balk()` and leaves immediately
+- if no customers, barber sleeps; first arrival wakes the barber
+- the customer and barber are "locked" while the haircut is undergoing, neither
+  can barber leave nor customer
+- a separate barber thread MUST exist
+
+## Solution 0
+
+I initially oversimplieid the problem, letting barber re-use the caller's mutex so
+effectively there being no barber thread at all. The point of the problem is that
+double arrival and wait.
+
+## Solution 1
+
+semas make natural sense, I think semas as "tickets" to access resource are just a
+cleaner model over cvs unless you have a complicated cv condition. You can just put
+whatever data you want to access behind a binary sema and that's effectively same
+as a mutex with free waits and notifcations.
+
+so the idea is
+
+```
+customer
+  look at chairs under a global mutex
+    leave if needed
+  takechair
+    put the barber chair sticker on my chair
+      THIS bit is now single threaded ( kind of )
+      binary sema done haircut = false
+      make a ticket for the barber ( which barber waits on, this should be counting sema )
+
+      wait on done haircut which is set by barber
+    release back the barber chair
+  release chair
+```
+
+## Solution 2 ( book's solution )
+
+The book's solution focuses more on the 2 thread sync using two semas.
+Mine was more of a two way signalling approach.
+
+"conceptually" and I don't know if this makes a difference in practice,
+the barber thread immediately knows is a customer is ready based on already
+signalled intents, mine on the other hands waits for the customer to notify
+the barber again so strictly speaking, states that I do are barber sleeps
+after every customer instead of when there are none.
+
+## Subproblem - FIFO
+
+customers to be served in the order they acquire
+
+barber NEEDS to pick the next one as that's the serialisation layer here
+so while each customer wait on barber ready, the barber ready for each
+customer MUST be different.
+
+What we do is each customer gets their own barber ready that they push to a
+queue under a global mutex. Then when barber wakes up he justs pops front
+and signals that one.
+
+impl detail: semas can't move so you use pointers, a shared ptr is ideal here
