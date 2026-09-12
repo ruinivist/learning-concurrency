@@ -366,3 +366,28 @@ some learnings
 - reusing semas is good across the two way but note that it MUST be alternating;
   if it's not then that's just plain wrong
 - you might want to not re-use to allow any to any interaction
+
+# Santa Claus problem (5.5)
+
+> this is REALLY screaming barriers
+
+Santa sleeps in his shop at the North Pole and can only be awakened by either:
+
+1. All nine reindeer returning from vacation.
+2. Three elves having difficulties making toys ( there can N elv threads but wake is on 3 )
+
+If both wake up, deers are prioritised.
+All the deer / elf threas MUST wait, and when the group condition is met, wake up
+and then santa + all the group threads then proceed together.
+
+Assume there are 9 deer threads and any n number of elf threads ( I'll do 5 ).
+No new elf cannot signal help ( individually, not as grp ) till ALL the current ones are
+helped.
+
+## Solution 1 ( barriers )
+
+I think we can def do something with semas but that something is just re-implementing
+barriers with them; problem probably want to teach the fast runner problem and the need
+of gen counters => apparently not, book uses a turnstile like solution for sync
+
+even with barriers, the preference impl is not entirely obvious
