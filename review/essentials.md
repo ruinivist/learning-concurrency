@@ -43,6 +43,20 @@ sem.release() // +1
 
 The dual "free" to "used" move and back is the most important.
 
+### How to do 2 way signalling with semas?
+
+```cpp
+// Thread A
+doA();
+aSignal.release();
+bSignal.acquire();
+
+// Thread B
+doB();
+bSignal.release();
+aSignal.acquire();
+```
+
 ### atomics
 
 ```cpp
