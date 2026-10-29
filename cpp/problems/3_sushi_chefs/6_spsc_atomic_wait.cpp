@@ -1,7 +1,6 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
-#include <optional>
 #include <print>
 #include <thread>
 

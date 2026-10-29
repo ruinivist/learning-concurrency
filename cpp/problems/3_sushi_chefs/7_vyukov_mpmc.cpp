@@ -26,7 +26,7 @@ class MPMC {
         std::atomic<std::size_t> seq;
         T data;
     };
-    std::atomic<std::size_t> enq_pos_{0}, dq_pos_{0};
+    std::atomic<std::size_t> tail_{0}, head_{0};
     std::array<Slot, N> buff_;
 
    public:
@@ -44,7 +44,7 @@ class MPMC {
         // enq at AKA queue is full
         while (true) {
             // need changes by other prods
-            std::size_t enq_pos = enq_pos_.load(std::memory_order_relaxed);
+            std::size_t enq_pos = tail_.load(std::memory_order_relaxed);
             std::size_t slot_pos = enq_pos % N;
 
             Slot& slot = buff_[slot_pos];
@@ -70,7 +70,7 @@ class MPMC {
             }
 
             // try CAS, CAS(address, expected, new), enq pos is the addr
-            bool success = enq_pos_.compare_exchange_weak(
+            bool success = tail_.compare_exchange_weak(
                 enq_pos, enq_pos + 1, std::memory_order_relaxed);
 
             if (!success) continue;
@@ -87,7 +87,7 @@ class MPMC {
 
     std::optional<T> try_dq() {
         while (true) {
-            std::size_t dq_pos = dq_pos_.load(std::memory_order_relaxed);
+            std::size_t dq_pos = head_.load(std::memory_order_relaxed);
             std::size_t slot_pos = dq_pos % N;
             Slot& slot = buff_[slot_pos];
             std::size_t seq = slot.seq.load(std::memory_order_acquire);
@@ -100,7 +100,7 @@ class MPMC {
             // try cas
             // my bias in thinking that seq is changed here, it's dp pos
             // you just claim by letting other see the new value
-            bool success = dq_pos_.compare_exchange_weak(
+            bool success = head_.compare_exchange_weak(
                 dq_pos, dq_pos + 1, std::memory_order_relaxed);
             if (!success) continue;
 
