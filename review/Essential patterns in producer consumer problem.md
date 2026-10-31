@@ -362,7 +362,62 @@ would be used to check readiness and generations.
 
 Interpret seq as "logical turn for which this slot is ready". Naturally the initial values would be iota.
 
+Also note that due to our ever increasing seqeuences, this ringbuffer does need any
+off by one for full handling, we can use the full capacity we reserve.
+
+**How does `seq` evolve?**
+
+The only way to understand all of this is to consider the 0th slot and how the seq
+on that changes over time.
+
+| Event                           | `slot.seq` |
+| ------------------------------- | ---------- |
+| Initially                       | 0          |
+| Producer enqueues at position 0 | 1          |
+| Consumer dequeues position 0    | 4          |
+| Producer enqueues at position 4 | 5          |
+| Consumer dequeues position 4    | 8          |
+| Producer enqueues at position 8 | 9          |
+
+Note how $seq / size$ is the generation we are at ( as in what reuse of the slot is
+this ).
+
+Now the core problem at hand can be decomposed into sync between prodcucer-producer
+and sync between producer-consumer ( similar consumer as subject ).
+
+_producer-producer_ ( `seq > enq_pos` )
+
+1. Initially, `tail_ = 0` and `slot[0].seq = 0`.
+2. Producer P1 reads `tail_ = 0` into its local `enq_pos` and pauses.
+3. Producer P2 reads `tail_ = 0`.
+4. P2 successfully CASes `tail_` from 0 to 1.
+5. P2 writes to slot 0 and publishes `slot[0].seq = 1` using `memory_order_release`.
+6. P1 resumes and reads `slot[0].seq = 1` using `memory_order_acquire`. Since `seq > enq_pos` (`1 > 0`), P1 knows its local `enq_pos` is stale.
+7. P1 executes `continue` and reloads `enq_pos = tail_.load(std::memory_order_relaxed)`. Despite using `relaxed`, this load cannot observe the old `tail_ = 0`, because P1's acquire load of `seq` synchronizes with P2's release store, making P2's earlier CAS on `tail_` happen-before P1's new load.
+
+Note that the seq's memory ordering ALSO sync the tail's ordering.
+The whole case is to sync after you read tail but haven't read the seq and in between some other producer does the whole CAS.
+
+_producer-consumer_ ( FULL case, `seq < enq_pos`)
+
+Assume `N = 4`, focusing on slot 0.
+
+1. Initially, four elements have been enqueued, so `tail_ = 4`, `head_ = 0`, and `slot[0].seq = 1`.
+2. Consumer C1 reads `head_ = 0` and `slot[0].seq = 1` using `memory_order_acquire`.
+3. C1 successfully CASes `head_` from 0 to 1, but pauses before reading the data from slot 0.
+4. Producer P1 reads `tail_ = 4` into its local `enq_pos`, targeting slot 0 (`4 % 4 = 0`).
+5. P1 reads `slot[0].seq = 1` using `memory_order_acquire`. Since `seq < enq_pos` (`1 < 4`), P1 knows the slot has not yet been released by the consumer.
+6. P1 returns `false` without attempting CAS, even though `head_` has already advanced to 1, because C1 hasn't finished reading slot 0.
+7. C1 resumes, reads the data, and publishes `slot[0].seq = 4` using `memory_order_release`.
+8. When P1 retries and observes `slot[0].seq = 4` using `memory_order_acquire`, it can safely attempt to CAS `tail_` from 4 to 5 and overwrite slot 0.
+
+The svg below summarises all 4 cases of sync interaction.
+
+![vyukov-inequality-cases](./vyukov_mpmc_inequality_cases.svg)
+
 **No better way than to read the code**
+
+If you try to map, the CAS loop and the cases, the implementations become trivially simple. It takes some time to develop an intuition for the pieces here, but you can always stand on the shoulders of giants.
 
 ```cpp
 bool try_enq(T data) {
@@ -437,4 +492,23 @@ std::optional<T> try_dq() {
 
 Note how only the seq loads are synchronised and not head or tail, which are both relaxed reads.
 
-![mpcm-overview](./vyukov_mpmc_overview.svg)
+![mpmc-overview](./vyukov_mpmc_overview.svg)
+
+**How do actual producers use it?**
+You can do a yielding spinlock.
+
+```cpp
+void producer() {
+    while (!q.try_enq(something)) {
+        std::this_thread::yield();
+    }
+}
+```
+
+**Why the "almost"?**
+
+Any thread that gets pre-empted between 1 and 2, will block others unless the same thread
+is able to complete both steps. For any other case though, a cas failure will always
+mean that some other thread progressed.
+
+![almost-lock-free](./vyukov_progress_gap.svg)
