@@ -396,7 +396,11 @@ _producer-producer_ ( `seq > enq_pos` )
 7. P1 executes `continue` and reloads `enq_pos = tail_.load(std::memory_order_relaxed)`. Despite using `relaxed`, this load cannot observe the old `tail_ = 0`, because P1's acquire load of `seq` synchronizes with P2's release store, making P2's earlier CAS on `tail_` happen-before P1's new load.
 
 Note that the seq's memory ordering ALSO sync the tail's ordering.
-The whole case is to sync after you read tail but haven't read the seq and in between some other producer does the whole CAS.
+The whole case is to sync after you read tail but haven't read the seq and in between some other producer does the whole CAS ( THIS happens to be case and is not needed for correctness )
+
+**Wait, what do you mean? I'm lost on the memory ordering here?**
+
+Note that atomics are atomics with any memory ordering, what you WANT to gate is the other non atomic variables. Here, seq acts as that barrier for data, so all you need is synchronisation on seq.
 
 _producer-consumer_ ( FULL case, `seq < enq_pos`)
 
@@ -512,3 +516,8 @@ is able to complete both steps. For any other case though, a cas failure will al
 mean that some other thread progressed.
 
 ![almost-lock-free](./vyukov_progress_gap.svg)
+
+**Somthing to remember**
+
+- In A Vyukov MPMC, you just check the ( head OR tail ) and the slot's seq, as opposed to both head and tail in the case of a SPSC
+- head and tail are use to claim, seq to do the publish
